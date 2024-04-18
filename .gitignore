@@ -1,0 +1,47 @@
+# .gitignore
+__cache__
+
+# Ignore system files
+*.DS_Store
+Thumbs.db
+
+# Ignore node modules:
+node_modules/
+
+# Ignore log files
+*.log
+
+# Ignore build files:wq
+/dist
+/build
+
+# Ignore .env files
+.env
+
+# Ignore IDE specific files
+.idea/
+.vscode/
+*.iml
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.sln.ide/
+
+# Ignore Python specific files
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Ignore Java specific files
+*.class
+*.jar
+*.war
+*.ear
+*.logs
+*.rar
+
+# Ignore PHP specific files
+vendor/
+composer.lock
