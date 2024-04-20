@@ -1,44 +1,34 @@
-"""Entrance."""
-
+from models import DQN
+from federated_server import Agent, Server, federate_and_update_agents
 import env
-from plot import node_plot
 
 if __name__ == '__main__':
-    print('start---')
+    print('Start---')
 
-    environment, scheduler = env.load() # here it will return already trained DQN agent.. the polt of reward show the agent learning will be plot at the end of everything
-    # scheduler is the trained DQN agent
+    # Setup environments and agents
+    number_of_agents = 5
+    input_shape = (10, 10, 3)  # Define the input shape
+    number_of_actions = 5       # Define the number of actions
 
-    all_actions = []
+    environments, schedulers = zip(*[env.load() for _ in range(number_of_agents)])
+    models = [DQN(input_shape, number_of_actions) for _ in range(number_of_agents)]
+    agents = [Agent(environment, model) for environment, model in zip(environments, models)]
+    global_model = DQN(input_shape, number_of_actions)
+    server = Server(global_model)
 
-    while not environment.terminated():
-       # environment.plot()
-        actions = scheduler.schedule()
+    # Main simulation loop
+    number_of_training_cycles = 100  # Define the number of training cycles
+    for cycle in range(number_of_training_cycles):
+        for agent, scheduler in zip(agents, schedulers):
+            while not agent.environment.terminated():
+                current_state = agent.environment.get_state()  # Use the correct method to get the current state
+                action = agent.model.get_action(current_state)  # Decision-making by the agent
+                new_state, reward, done = agent.environment.step(action)  # Environment processes the action
+                agent.model.add_experience(current_state, action, reward, new_state, done)  # Update model with new experience
+                if done:
+                    break
+            agent.model.train()  # Local model updates after the episode
 
-        # Print debugging information at each timestep
-        print("Timestep:", environment.timestep_counter)
+        federate_and_update_agents(agents, server)  # Federated averaging after all agents update
 
-        # Print utilization for each node
-        for node in environment.nodes:
-            print(f"Node {node.label} utilization: {node.utilization()}")
-
-        # Print the status of the queue
-        print(f"Queue size: {len(environment.queue)}")
-
-        # Print the status of the backlog
-        print(f"Backlog size: {len(environment.backlog)}")
-
-        # Check if the task generator has ended
-        print("Task generator ended:", environment._task_generator_end)
-
-
-        if len(actions) != 0:
-            print(actions)
-            all_actions += actions
-        else:
-            print('no scheduler actions !')
-
-    #node_plot(all_actions)
-
-    print('END')
-
+    print('End---')
