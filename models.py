@@ -41,7 +41,7 @@ class DQN:
     def train(self):
         if len(self.experience['s']) < self.min_experiences:
             return
-        ids = np.random.randint(low=0, high=len(self.experience['s']), size=32)  # sample batch size
+        ids = np.random.randint(low=0, high=len(self.experience['s']), size=32)  # Sample batch size
         states = np.array(self.experience['s'])[ids]
         actions = np.array(self.experience['a'])[ids]
         rewards = np.array(self.experience['r'])[ids]
@@ -51,21 +51,24 @@ class DQN:
         target_values = np.where(dones, rewards, rewards + self.gamma * values_next)
 
         with tf.GradientTape() as tape:
+            current_predictions = self.model(states)
             selected_action_values = tf.reduce_sum(
-                self.model.predict(states) * tf.one_hot(actions, len(actions)), axis=1)
+                current_predictions * tf.one_hot(actions, depth=current_predictions.shape[1]), axis=1)
             loss = tf.reduce_mean(tf.square(target_values - selected_action_values))
-        variables = self.model.trainable_variables
-        gradients = tape.gradient(loss, variables)
-        self.model.optimizer.apply_gradients(zip(gradients, variables))
+        gradients = tape.gradient(loss, self.model.trainable_variables)
+        self.model.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
 
     def predict(self, inputs):
         return self.model.predict(inputs)
 
-    def get_action(self, state, epsilon=0):
+    def get_action(self, state, epsilon=None):
+        if epsilon is None:
+            epsilon = self.epsilon
         if np.random.random() < epsilon:
             return np.random.randint(self.model.output_shape[-1])
         else:
-            return np.argmax(self.predict(state[np.newaxis]))
+            predicted_actions = self.predict(state[np.newaxis])
+            return np.argmax(predicted_actions)
 
 def average_dqn_parameters(dqn_list):
     avg_weights = []
@@ -79,6 +82,6 @@ def test_global_model(dqn, test_environment):
     while not test_environment.terminated():
         state = test_environment.get_state()
         action = dqn.get_action(state, epsilon=0)  # Greedy action
-        reward = test_environment.step(action)
+        new_state, reward, done = test_environment.step(action)
         total_reward += reward
     return total_reward
