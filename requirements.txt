@@ -1,6 +1,8 @@
 tensorflow
+keras
 pillow
 numpy
 matplotlib
+pandas
 
 

@@ -23,7 +23,7 @@ def node_plot(allActions):
     plt.savefig("__cache__/node_plot/Scheduled_Tasks.png")
 
     # Show the plot (if you want to display it)
-    plt.show()
+    #plt.show()
 
 
 '''

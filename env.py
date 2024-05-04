@@ -26,53 +26,6 @@ class Environment:
         self.timestep_counter = 0
         self._task_generator = task_generator
         self._task_generator_end = False
-    
-    def reset(self):
-        # Reset environment to initial conditions
-        self.queue = []
-        self.backlog = []
-        self.timestep_counter = 0
-        # Possibly other state initializations
-        # Return the initial state of the environment if necessary
-        return self.summary()
-    
-    def get_state(self):
-        # Collect relevant state information
-        state = np.array([node.utilization() for node in self.nodes] + [len(self.queue), len(self.backlog)])
-        # Calculate the total size needed to match the reshape target
-        total_size = 10 * 10 * 3  # This is 300 for a (10, 10, 3) shape
-        # Calculate the padding size needed
-        padding_size = total_size - len(state)
-        if padding_size > 0:
-            # Pad the state array if it's less than required
-            state = np.pad(state, (0, padding_size), mode='constant', constant_values=0)
-        else:
-            # Or slice the state array if it's more than required
-            state = state[:total_size]
-        # Reshape to fit the model input shape
-        return state.reshape((10, 10, 3))
-    
-    def get_current_state(self):
-        # Assuming you have a way to define what the current state is
-        return self.current_state
-
-    def step(self, action):
-        # Example: Process the action and update the environment
-        # This is a simplified example. You'll need to adapt this to fit your environment's logic.
-        reward = 0
-        done = False
-
-        # Example action processing logic
-        if action == 'move':
-            # Update environment state
-            reward = 1  # Assign reward based on action's outcome
-            if self.some_end_condition:
-                done = True
-
-        # Assuming self.summary() returns the current state of the environment
-        new_state = self.summary()
-        
-        return new_state, reward, done
 
     def timestep(self):
         """Proceed to the next timestep."""
@@ -206,7 +159,7 @@ def load(load_environment=True, load_scheduler=True):
             elif 'SpreadScheduler' == data['scheduler']:
                 scheduler = SpreadScheduler(environment)
             else:
-                scheduler = DeepRMScheduler(environment, data['train'])
+                scheduler = DeepRMScheduler(environment, False)
         return (environment, scheduler)
 
 
