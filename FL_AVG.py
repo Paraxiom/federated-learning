@@ -1,20 +1,16 @@
 from schedule import *
 
-def combine_agents(main_agent, agents):
+# Adjusting combine_agents in FL_AVG.py to average based on scores or data volume
+def combine_agents(main_agent, agents, scores):
+    total_score = sum(scores)
     for i in range(len(agents)):
         for main_param, agent_param in zip(main_agent.dqn_train.model.trainable_variables, agents[i].dqn_train.model.trainable_variables):
-            if (i == 0):
-                main_param.assign(agent_param)
+            if i == 0:
+                main_param.assign(agent_param * (scores[i] / total_score))
             else:
-                main_param.assign(main_param * (i / (i + 1)) + agent_param * (1 / (i + 1)))
-
-        for main_param, agent_param in zip(main_agent.dqn_target.model.trainable_variables, agents[i].dqn_target.model.trainable_variables):
-            if (i == 0):
-                main_param.assign(agent_param)
-            else:
-                main_param.assign(main_param * (i / (i + 1)) + agent_param * (1 / (i + 1)))
-
+                main_param.assign(main_param + agent_param * (scores[i] / total_score))
     return main_agent
+
 
 def combine_agents_reward_based(main_agent, agents, scores):
     total_reward = sum(scores)

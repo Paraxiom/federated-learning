@@ -57,3 +57,44 @@ if __name__ == '__main__':
         'Single Agent': scores_single_agent,
         'Global Agent': scores_global_agent
     }).to_csv('agent_scores_comparison.csv', index=False)
+
+
+def main_training_loop():
+    environments, schedulers = initialize_environments_and_schedulers(num_agents)
+    global_scheduler = initialize_global_scheduler()
+    
+    for episode in range(total_episodes):
+        local_scores = []
+        
+        # Train each local scheduler and compute scores
+        for env, scheduler in zip(environments, schedulers):
+            train_scheduler(env, scheduler)
+            score = evaluate_scheduler(env, scheduler)
+            local_scores.append(score)
+        
+        # Federated averaging
+        global_scheduler = combine_agents(global_scheduler, schedulers, local_scores)
+        schedulers = distribute_agents(global_scheduler, schedulers)
+        
+        # Optionally evaluate global scheduler
+        global_score = evaluate_scheduler(global_environment, global_scheduler)
+        print(f'Episode {episode}: Global Score: {global_score}')
+
+        # Save scores and models
+        save_scores_and_models(schedulers, global_scheduler, episode)
+
+def plot_results(scores_single_agent, scores_global_agent):
+    plt.plot(scores_single_agent, label='Single Agent')
+    plt.plot(scores_global_agent, label='Global Agent')
+    plt.xlabel('Episodes')
+    plt.ylabel('Scores')
+    plt.legend()
+    plt.savefig('comparison_plot.png')
+    plt.show()
+
+def save_scores(scores_single_agent, scores_global_agent):
+    results = pd.DataFrame({
+        'Single Agent': scores_single_agent,
+        'Global Agent': scores_global_agent
+    })
+    results.to_csv('scores_comparison.csv', index=False)

@@ -1,0 +1,104 @@
+Hello,
+I need a help with python code doing task scheduling based on multiple DQNs in multiple environments. I wrote the code using tensorflow and ran it. It is work on error but I see the results shows that, the models do not trained and learned. I need a help to fix this problem. My goal is to do scheduling based on averaging the parameters of DQNs after trained training part. Can you help with that? 
+
+
+This is my code written but needs some improvement and changes, there is file of requirements as well 
+
+
+https://drive.google.com/drive/folders/1-9IYILMrYd1sVF-RXCXmrn3hvVxUtMKR?usp=drive_link
+
+
+This is a code which I would to follow to do federated averaging to my code 
+
+I need to use the same path in my code 
+
+Might help you to follow how to run multiple dqns on multiple environments and do aggregation of the parameters then do scheduling 
+
+https://drive.google.com/drive/folders/1GJuCepC2kbV9jZHi9ZqfUCklK5utP3az?usp=drive_link 
+
+The above code take the idea originally from this code on github: 
+https://github.com/nishantkr18/federated-model-averaging-for-DQN
+
+
+
+Please check the code and requirements carefullythen, let me know if you can help, I have one - two weeks left to finish this task and fix this problem. The budget is your responsibility based on your efforts and how much you finish from this work. If you have any questions please feel free to ask anytime. 
+Thanks
+
+
+
+
+
+
+the requerments:
+
+tensorflow
+pillow
+numpy
+
+
+
+the goal is:
+- run DQNs on different Environment -> each agent tarined and learned on different Env
+- each Env has its own task generator and nodes. 
+- the scheduling should be based on averiging the parameters of all DQNs. 
+- the code ran and the result in the cache file -> the problem is the DQNs do not trained and learned so the scheduling part dose not work
+- we need to debug the code fix the error, and after the code work in training using py file named fed_avg.py to avreging the parameters and distruted as in this code on github
+https://github.com/nishantkr18/federated-model-averaging-for-DQN/blob/master/agent_compiler.py
+
+- the dataset should useone of these:
+https://github.com/alibaba/clusterdata/tree/master/cluster-trace-gpu-v2020/data
+
+or
+
+http://gwa.ewi.tudelft.nl/datasets/gwa-t-12-bitbrains
+
+
+
+
+the idea of this work:
+Federated averaging for task scheduling based Deep Q-Networks (DQNs) involves training decentralized agents on local data and then aggregating their parameters to obtain a global model. Here's a step-by-step guide on how to implement federated averaging for task scheduling based DQNs:
+
+Decentralized Training:
+
+Set up multiple agents, each representing a computing node or a task scheduler or environment with nodes and task generator as in this code.
+Each agent maintains its own local DQN model and collects experience by interacting with its environment (e.g., scheduling tasks).
+Experience Collection:
+
+Agents collect experiences (state, action, reward, next state) by executing tasks and observing the outcomes.
+Store these experiences in local memory buffers.
+Local Model Updates:
+
+Periodically update the local DQN models using experiences stored in the local memory buffers.
+Use techniques like experience replay to sample experiences and update the DQN parameters using methods such as Q-learning or Deep Q-Learning.
+Communication and Aggregation:
+
+Define a communication protocol for exchanging model parameters between agents.
+Implement federated averaging: at regular intervals, agents communicate their local model parameters to a central server or aggregator.
+Aggregation Step:
+
+Upon receiving parameters from all agents, the central server averages them to obtain a global model.
+The global model represents an aggregation of knowledge learned by individual agents across the network.
+Broadcasting Global Model:
+
+Broadcast the updated global model back to all agents in the network.
+Synchronization:
+
+Ensure synchronization between local and global models to maintain consistency across the network.
+Repeat Iteratively:
+
+Continue the process of local experience collection, model updates, communication, and aggregation iteratively.
+Convergence and Performance Monitoring:
+
+Monitor convergence and performance metrics of the global model to assess its effectiveness in task scheduling.
+Adjust hyperparameters, such as learning rates or exploration strategies, as needed to improve performance.
+Evaluation and Testing:
+
+Evaluate the performance of the global model on unseen data or test environments to assess its generalization capabilities and effectiveness in real-world scenarios.
+By following these steps, you can implement federated averaging for task scheduling based DQNs, enabling decentralized learning across a network of agents while aggregating their knowledge to improve task scheduling efficiency.
+
+
+
+
+# feel free to change any thing in the code to improve it, as you are expert in ML
+# please check the code carefuly and let me know if you can help 
+

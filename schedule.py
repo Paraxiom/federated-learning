@@ -124,17 +124,47 @@ class CNNModel(tf.keras.Model):
 class DQN(object):
     """DQN Implementation."""
 
-    def __init__(self, input_shape, output_shape):
-        self.lr = 0.01
-        self.gamma = 0.99
-        self.batch_size = 32
-        self.min_experiences = 100
-        self.max_experiences = 10000
-        self.optimizer = tf.optimizers.Adam(self.lr)
-        self.num_actions = output_shape
-        self.model = CNNModel(input_shape, output_shape)
+    
+    def __init__(self, input_shape, output_shape, num_actions):
+        self.num_actions = num_actions  # Corrected to take num_actions directly from parameters
+        self.lr = 0.01  # Learning rate
+        self.gamma = 0.99  # Discount factor
+        self.batch_size = 64  # Batch size for training
+        self.epsilon = 1.0  # Exploration rate
+        self.epsilon_min = 0.01
+        self.epsilon_decay = 0.995
         self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}
+        self.min_experiences = 100  # Example value, set appropriately
+        self.max_experiences = 1000  # Maximum experiences in replay 
+        self.optimizer = tf.optimizers.Adam(self.lr)
+        self.model = self._create_model(input_shape, output_shape)
+        self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}  # Initialize replay buffer
+    
+    def _create_model(self, input_shape, output_shape):
+        model = Sequential([
+            Conv2D(32, (3, 3), activation='relu', input_shape=input_shape),
+            MaxPooling2D(),
+            Flatten(),
+            Dense(64, activation='relu'),
+            Dense(output_shape, activation='linear')
+        ])
+        model.compile(optimizer='adam', loss='mean_squared_error')
+        return model
+        
+    def get_action(self, states, epsilon=None):
+        if epsilon is None:
+            epsilon = self.epsilon
+        if np.random.rand() < epsilon:
+            return np.random.choice(self.num_actions)
+        else:
+            return np.argmax(self.predict(np.array([states]))[0])
 
+    def train(self, dqn_target):
+        if len(self.experience['s']) < self.min_experiences:
+            return
+        ...
+        # Update epsilon after each batch training
+        self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
     def predict(self, input_data):
         """Predict Q value given state."""
         return self.model(input_data.astype('float32').reshape(input_data.shape[0], input_data.shape[1], input_data.shape[2], 1))
@@ -167,15 +197,10 @@ class DQN(object):
         gradients = tape.gradient(loss, variables)
         self.optimizer.apply_gradients(zip(gradients, variables))
 
-    def get_action(self, states, epsilon):
-        """Predict action according to state (espilon for exploration)."""
-        if np.random.random() < epsilon:
-            return np.random.choice(self.num_actions)
-        else:
-            return np.argmax(self.predict(np.array([states]))[0])
+    
 
     def add_experience(self, exp):
-        """Add experience into replay buffer."""
+        """Add experience to the replay buffer."""
         if len(self.experience['s']) >= self.max_experiences:
             for key in self.experience.keys():
                 self.experience[key].pop(0)
@@ -190,8 +215,17 @@ class DQN(object):
             v1.assign(v2.numpy())
 
     def save_weights(self):
-        """Save model."""
-        self.model.save()
+        """Save model weights."""
+        # Ensure the directory exists
+        model_dir = '__cache__/model'
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        # Define the filepath for the Keras model
+        filepath = os.path.join(model_dir, 'dqn_model.keras')
+        # Save the model without specifying the format
+        self.model.save(filepath)
+
+
 
 
 class DeepRMTrainer(object):
@@ -204,11 +238,12 @@ class DeepRMTrainer(object):
         self.epsilon = 0.99
         self.decay = 0.99
         self.min_epsilon = 0.1
+        num_actions = environment.queue_size * len(environment.nodes) + 1
         input_shape = (environment.summary().shape[0], environment.summary().shape[1], 1)
         output_shape = environment.queue_size * len(environment.nodes) + 1
-        self.dqn_train = DQN(input_shape, output_shape)
-        self.dqn_target = DQN(input_shape, output_shape)
-
+        self.dqn_train = DQN(input_shape, output_shape, num_actions)
+        self.dqn_target = DQN(input_shape, output_shape, num_actions)
+        
         self.total_rewards = np.empty(self.episodes)
         self.task_delay = np.empty(self.episodes)
 
@@ -246,6 +281,7 @@ class DeepRMTrainer(object):
         while not self.environment.terminated():
             # observe state and predict action
             observation = self.environment.summary()
+            # In the DeepRMTrainer or wherever get_action is called
             action_index = self.dqn_train.get_action(observation, self.epsilon)
             task_index, node_index = self._explain(action_index)
 
@@ -338,13 +374,19 @@ class DeepRMScheduler(Scheduler):
     """DeepRM scheduler."""
 
     def __init__(self, environment, train=True):
-        if train:
-            DeepRMTrainer(environment).train()
+        self.environment = environment
         input_shape = (environment.summary().shape[0], environment.summary().shape[1], 1)
         output_shape = environment.queue_size * len(environment.nodes) + 1
-        self.dqn_train = DQN(input_shape, output_shape)
-        self.dqn_target = DQN(input_shape, output_shape)
-        self.environment = environment
+        
+        # Example calculation for num_actions
+        num_actions = environment.queue_size * len(environment.nodes) + 1  # Adjust logic as needed
+
+        self.dqn_train = DQN(input_shape, output_shape, num_actions)
+        self.dqn_target = DQN(input_shape, output_shape, num_actions)
+        
+        if train:
+            trainer = DeepRMTrainer(environment)
+            trainer.train()
 
     def schedule(self):
         """Schedule with trained model."""
@@ -353,7 +395,9 @@ class DeepRMScheduler(Scheduler):
         # apply actions until there's an invalid one
         while True:
             observation = self.environment.summary()
-            action_index = self.dqn_train.get_action(observation, epsilon=0.1)  # Set epsilon to a low non-zero value
+            # In the DeepRMTrainer or wherever get_action is called
+            action_index = self.dqn_train.get_action(observation, self.epsilon)
+
             task_index, node_index = self._explain(action_index)
             if task_index < 0 or node_index < 0:
                break

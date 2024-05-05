@@ -27,6 +27,12 @@ class Environment:
         self._task_generator = task_generator
         self._task_generator_end = False
 
+    
+    def get_number_of_actions(self):
+        """Calculate the number of possible actions."""
+        # Each task can be placed on any node, plus one action for not scheduling
+        return self.queue_size * len(self.nodes) + 1
+    
     def timestep(self):
         """Proceed to the next timestep."""
         self.timestep_counter += 1
