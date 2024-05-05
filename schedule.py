@@ -7,7 +7,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Conv2D, Flatten, Dropout, MaxPooling2D
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dropout, Flatten, Dense, Input
+
 import matplotlib.pyplot as plt
 import env
 
@@ -88,16 +89,17 @@ class SpreadScheduler(Scheduler):
 
 
 class CNNModel(tf.keras.Model):
-    """CNN Model."""
-
     def __init__(self, input_shape, output_shape):
         super(CNNModel, self).__init__()
 
         if os.path.isfile('__cache__/model/deeprm.keras'):
+            # Load the model; assuming the model file adheres to new input specifications
             self.model = tf.keras.models.load_model('__cache__/model/deeprm.keras')
         else:
+            # Define a new model using Sequential API with explicit Input layer
             self.model = Sequential([
-                Conv2D(16, (3, 3), padding='same', activation='relu', input_shape=input_shape),
+                Input(shape=input_shape),  # Explicit Input layer
+                Conv2D(16, (3, 3), padding='same', activation='relu'),
                 MaxPooling2D(),
                 Dropout(0.2),
                 Flatten(),
@@ -105,8 +107,8 @@ class CNNModel(tf.keras.Model):
                 Dense(output_shape, activation='linear')
             ])
 
-        # Compile the model here
-        self.model.compile(optimizer='adam', loss='mean_squared_error')  # Customize with your preferred optimizer and loss
+        # Compile the model
+        self.model.compile(optimizer='adam', loss='mean_squared_error')
 
     @tf.function
     def call(self, input_data):
@@ -123,26 +125,25 @@ class CNNModel(tf.keras.Model):
 
 class DQN(object):
     """DQN Implementation."""
-
-    
     def __init__(self, input_shape, output_shape, num_actions):
-        self.num_actions = num_actions  # Corrected to take num_actions directly from parameters
-        self.lr = 0.01  # Learning rate
-        self.gamma = 0.99  # Discount factor
-        self.batch_size = 64  # Batch size for training
-        self.epsilon = 1.0  # Exploration rate
+        self.num_actions = num_actions
+        self.lr = 0.01
+        self.gamma = 0.99
+        self.batch_size = 64
+        self.epsilon = 1.0
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
         self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}
-        self.min_experiences = 100  # Example value, set appropriately
-        self.max_experiences = 1000  # Maximum experiences in replay 
+        self.min_experiences = 100
+        self.max_experiences = 1000
         self.optimizer = tf.optimizers.Adam(self.lr)
         self.model = self._create_model(input_shape, output_shape)
         self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}  # Initialize replay buffer
-    
+
     def _create_model(self, input_shape, output_shape):
         model = Sequential([
-            Conv2D(32, (3, 3), activation='relu', input_shape=input_shape),
+            Input(shape=input_shape),
+            Conv2D(32, (3, 3), activation='relu'),
             MaxPooling2D(),
             Flatten(),
             Dense(64, activation='relu'),
@@ -150,7 +151,7 @@ class DQN(object):
         ])
         model.compile(optimizer='adam', loss='mean_squared_error')
         return model
-        
+    
     def get_action(self, states, epsilon=None):
         if epsilon is None:
             epsilon = self.epsilon
@@ -162,7 +163,6 @@ class DQN(object):
     def train(self, dqn_target):
         if len(self.experience['s']) < self.min_experiences:
             return
-        ...
         # Update epsilon after each batch training
         self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
     def predict(self, input_data):

@@ -612,6 +612,13 @@ def node_plots(allActions):
 
 # End of plot.py
 
+# Start of test_gpu.py
+import tensorflow as tf
+
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+
+# End of test_gpu.py
+
 # Start of schedule.py
 """Schedulers."""
 
@@ -622,7 +629,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Conv2D, Flatten, Dropout, MaxPooling2D
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dropout, Flatten, Dense, Input
+
 import matplotlib.pyplot as plt
 import env
 
@@ -703,16 +711,17 @@ class SpreadScheduler(Scheduler):
 
 
 class CNNModel(tf.keras.Model):
-    """CNN Model."""
-
     def __init__(self, input_shape, output_shape):
         super(CNNModel, self).__init__()
 
         if os.path.isfile('__cache__/model/deeprm.keras'):
+            # Load the model; assuming the model file adheres to new input specifications
             self.model = tf.keras.models.load_model('__cache__/model/deeprm.keras')
         else:
+            # Define a new model using Sequential API with explicit Input layer
             self.model = Sequential([
-                Conv2D(16, (3, 3), padding='same', activation='relu', input_shape=input_shape),
+                Input(shape=input_shape),  # Explicit Input layer
+                Conv2D(16, (3, 3), padding='same', activation='relu'),
                 MaxPooling2D(),
                 Dropout(0.2),
                 Flatten(),
@@ -720,8 +729,8 @@ class CNNModel(tf.keras.Model):
                 Dense(output_shape, activation='linear')
             ])
 
-        # Compile the model here
-        self.model.compile(optimizer='adam', loss='mean_squared_error')  # Customize with your preferred optimizer and loss
+        # Compile the model
+        self.model.compile(optimizer='adam', loss='mean_squared_error')
 
     @tf.function
     def call(self, input_data):
@@ -736,109 +745,107 @@ class CNNModel(tf.keras.Model):
 
 
 
-class DQN(object):
-    """DQN Implementation."""
+    class DQN(object):
+        """DQN Implementation."""
+        def __init__(self, input_shape, output_shape, num_actions):
+            self.num_actions = num_actions
+            self.lr = 0.01
+            self.gamma = 0.99
+            self.batch_size = 64
+            self.epsilon = 1.0
+            self.epsilon_min = 0.01
+            self.epsilon_decay = 0.995
+            self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}
+            self.min_experiences = 100
+            self.max_experiences = 1000
+            self.optimizer = tf.optimizers.Adam(self.lr)
+            self.model = self._create_model(input_shape, output_shape)
+            self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}  # Initialize replay buffer
 
-    
-    def __init__(self, input_shape, output_shape, num_actions):
-        self.num_actions = num_actions  # Corrected to take num_actions directly from parameters
-        self.lr = 0.01  # Learning rate
-        self.gamma = 0.99  # Discount factor
-        self.batch_size = 64  # Batch size for training
-        self.epsilon = 1.0  # Exploration rate
-        self.epsilon_min = 0.01
-        self.epsilon_decay = 0.995
-        self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}
-        self.min_experiences = 100  # Example value, set appropriately
-        self.max_experiences = 1000  # Maximum experiences in replay 
-        self.optimizer = tf.optimizers.Adam(self.lr)
-        self.model = self._create_model(input_shape, output_shape)
-        self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}  # Initialize replay buffer
-    
-    def _create_model(self, input_shape, output_shape):
-        model = Sequential([
-            Conv2D(32, (3, 3), activation='relu', input_shape=input_shape),
-            MaxPooling2D(),
-            Flatten(),
-            Dense(64, activation='relu'),
-            Dense(output_shape, activation='linear')
-        ])
-        model.compile(optimizer='adam', loss='mean_squared_error')
-        return model
+        def _create_model(self, input_shape, output_shape):
+            model = Sequential([
+                Input(shape=input_shape),
+                Conv2D(32, (3, 3), activation='relu'),
+                MaxPooling2D(),
+                Flatten(),
+                Dense(64, activation='relu'),
+                Dense(output_shape, activation='linear')
+            ])
+            model.compile(optimizer='adam', loss='mean_squared_error')
+            return model
         
-    def get_action(self, states, epsilon=None):
-        if epsilon is None:
-            epsilon = self.epsilon
-        if np.random.rand() < epsilon:
-            return np.random.choice(self.num_actions)
-        else:
-            return np.argmax(self.predict(np.array([states]))[0])
+        def get_action(self, states, epsilon=None):
+            if epsilon is None:
+                epsilon = self.epsilon
+            if np.random.rand() < epsilon:
+                return np.random.choice(self.num_actions)
+            else:
+                return np.argmax(self.predict(np.array([states]))[0])
 
-    def train(self, dqn_target):
-        if len(self.experience['s']) < self.min_experiences:
-            return
-        ...
-        # Update epsilon after each batch training
-        self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
-    def predict(self, input_data):
-        """Predict Q value given state."""
-        return self.model(input_data.astype('float32').reshape(input_data.shape[0], input_data.shape[1], input_data.shape[2], 1))
+        def train(self, dqn_target):
+            if len(self.experience['s']) < self.min_experiences:
+                return
+            # Update epsilon after each batch training
+            self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
+        def predict(self, input_data):
+            """Predict Q value given state."""
+            return self.model(input_data.astype('float32').reshape(input_data.shape[0], input_data.shape[1], input_data.shape[2], 1))
 
-    @tf.function
-    def train(self, dqn_target):
-        """Train DQN."""
-        if len(self.experience['s']) < self.min_experiences:
-            return
+        @tf.function
+        def train(self, dqn_target):
+            """Train DQN."""
+            if len(self.experience['s']) < self.min_experiences:
+                return
 
-        # samples
-        ids = np.random.randint(low=0, high=len(self.experience['s']), size=self.batch_size)
-        states = np.asarray([self.experience['s'][i] for i in ids])
-        actions = np.asarray([self.experience['a'][i] for i in ids])
-        rewards = np.asarray([self.experience['r'][i] for i in ids])
-        states_next = np.asarray([self.experience['s2'][i] for i in ids])
-        dones = np.asarray([self.experience['done'][i] for i in ids])
+            # samples
+            ids = np.random.randint(low=0, high=len(self.experience['s']), size=self.batch_size)
+            states = np.asarray([self.experience['s'][i] for i in ids])
+            actions = np.asarray([self.experience['a'][i] for i in ids])
+            rewards = np.asarray([self.experience['r'][i] for i in ids])
+            states_next = np.asarray([self.experience['s2'][i] for i in ids])
+            dones = np.asarray([self.experience['done'][i] for i in ids])
 
-        # use target model to calculate actual values
-        values_next = np.max(dqn_target.predict(states_next), axis=1)
-        actual_values = np.where(dones, rewards, rewards+self.gamma*values_next)
+            # use target model to calculate actual values
+            values_next = np.max(dqn_target.predict(states_next), axis=1)
+            actual_values = np.where(dones, rewards, rewards+self.gamma*values_next)
 
-        # use train model to calculate predict values and loss
-        with tf.GradientTape() as tape:
-            predicted_values = tf.math.reduce_sum(self.predict(states) * tf.one_hot(actions, self.num_actions), axis=1)
-            loss = tf.math.reduce_sum(tf.square(actual_values - predicted_values))
+            # use train model to calculate predict values and loss
+            with tf.GradientTape() as tape:
+                predicted_values = tf.math.reduce_sum(self.predict(states) * tf.one_hot(actions, self.num_actions), axis=1)
+                loss = tf.math.reduce_sum(tf.square(actual_values - predicted_values))
 
-        # apply gradient descent to update train model
-        variables = self.model.trainable_variables
-        gradients = tape.gradient(loss, variables)
-        self.optimizer.apply_gradients(zip(gradients, variables))
+            # apply gradient descent to update train model
+            variables = self.model.trainable_variables
+            gradients = tape.gradient(loss, variables)
+            self.optimizer.apply_gradients(zip(gradients, variables))
 
-    
+        
 
-    def add_experience(self, exp):
-        """Add experience to the replay buffer."""
-        if len(self.experience['s']) >= self.max_experiences:
-            for key in self.experience.keys():
-                self.experience[key].pop(0)
-        for key, value in exp.items():
-            self.experience[key].append(value)
+        def add_experience(self, exp):
+            """Add experience to the replay buffer."""
+            if len(self.experience['s']) >= self.max_experiences:
+                for key in self.experience.keys():
+                    self.experience[key].pop(0)
+            for key, value in exp.items():
+                self.experience[key].append(value)
 
-    def copy_weights(self, dqn_src):
-        """Copy weights between models."""
-        variables1 = self.model.trainable_variables
-        variables2 = dqn_src.model.trainable_variables
-        for v1, v2 in zip(variables1, variables2):
-            v1.assign(v2.numpy())
+        def copy_weights(self, dqn_src):
+            """Copy weights between models."""
+            variables1 = self.model.trainable_variables
+            variables2 = dqn_src.model.trainable_variables
+            for v1, v2 in zip(variables1, variables2):
+                v1.assign(v2.numpy())
 
-    def save_weights(self):
-        """Save model weights."""
-        # Ensure the directory exists
-        model_dir = '__cache__/model'
-        if not os.path.exists(model_dir):
-            os.makedirs(model_dir)
-        # Define the filepath for the Keras model
-        filepath = os.path.join(model_dir, 'dqn_model.keras')
-        # Save the model without specifying the format
-        self.model.save(filepath)
+        def save_weights(self):
+            """Save model weights."""
+            # Ensure the directory exists
+            model_dir = '__cache__/model'
+            if not os.path.exists(model_dir):
+                os.makedirs(model_dir)
+            # Define the filepath for the Keras model
+            filepath = os.path.join(model_dir, 'dqn_model.keras')
+            # Save the model without specifying the format
+            self.model.save(filepath)
 
 
 
