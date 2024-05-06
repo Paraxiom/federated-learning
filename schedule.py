@@ -232,7 +232,7 @@ class DeepRMTrainer(object):
     """DeepRM Trainer."""
 
     def __init__(self, environment):
-        self.episodes = 3
+        self.episodes = 20
         self.copy_steps = 32
         self.save_steps = 32
         self.epsilon = 0.99

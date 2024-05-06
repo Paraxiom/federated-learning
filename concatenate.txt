@@ -54,7 +54,8 @@ class Environment:
             task_index = action // len(self.nodes)
             if task_index < len(self.queue):
                 # Assign the task from the queue to the specified node
-                self.nodes[node_index].schedule_task(self.queue.pop(task_index))
+                if self.nodes[node_index].schedule_task(self.queue.pop(task_index), self.timestep_counter):
+                    pass # Task scheduled successfully
 
         # Move the next timestep after action processing
         self.timestep()
@@ -265,12 +266,17 @@ from schedule import *
 # Adjusting combine_agents in FL_AVG.py to average based on scores or data volume
 def combine_agents(main_agent, agents, scores):
     total_score = sum(scores)
+    if total_score == 0:
+        print("Warning: Total score is zero. Agents will not be updated.")
+        return main_agent  # or handle this case differently based on your needs
+
     for i in range(len(agents)):
         for main_param, agent_param in zip(main_agent.dqn_train.model.trainable_variables, agents[i].dqn_train.model.trainable_variables):
             if i == 0:
                 main_param.assign(agent_param * (scores[i] / total_score))
             else:
-                main_param.assign(main_param + agent_param * (scores[i] / total_score))
+                main_param.assign_add(agent_param * (scores[i] / total_score))
+
     return main_agent
 
 
@@ -392,15 +398,14 @@ class Node:
         return True
 
 
-    def schedule_task(self, task):
+    def schedule_task(self, task, current_time):
         """Schedule a task on this node if there is enough capacity."""
-        # Implementation assumes that Node has a method or process to handle task scheduling
-        # You might need to check resources, capacity, etc. before scheduling
         if self.can_schedule(task):
-            self.scheduled_tasks.append(task)
-            # Update any relevant node state or resources
+            # Assuming you pass the current time or timestep in which the task is scheduled
+            self.scheduled_tasks.append((task, current_time + task.duration))
             return True
         return False
+
     
 
     def schedule(self, task):
@@ -926,7 +931,7 @@ class DeepRMTrainer(object):
     """DeepRM Trainer."""
 
     def __init__(self, environment):
-        self.episodes = 3
+        self.episodes = 20
         self.copy_steps = 32
         self.save_steps = 32
         self.epsilon = 0.99
@@ -1077,7 +1082,7 @@ class DeepRMScheduler(Scheduler):
 
         self.dqn_train = DQN(input_shape, output_shape, num_actions)
         self.dqn_target = DQN(input_shape, output_shape, num_actions)
-        
+        self.epsilon = 1.0  # Starting value for epsilon
         if train:
             trainer = DeepRMTrainer(environment)
             trainer.train()
@@ -1145,22 +1150,21 @@ class DeepRMScheduler(Scheduler):
 # End of schedule.py
 
 # Start of __main__.py
-"""Entrance."""
+import matplotlib.pyplot as plt
+import pandas as pd
 import env
 from schedule import DeepRMScheduler as SchedulerTrain
 from FL_AVG import combine_agents, distribute_agents
-import pandas as pd
-from plot import node_plot
 
-def test_agent(test_environment, dqn_scheduler, runs_test=3):
-    scores = []
+def test_agent(environment, scheduler, runs_test=3):
+    total_scores = []
     for i in range(runs_test):
-        actions, score = dqn_scheduler.schedule()
-        print(f'run_test number {i}', score)
-        scores.append(score)
-    return sum(scores) / len(scores)
+        actions, run_scores = scheduler.schedule()
+        average_score = sum(run_scores) / len(run_scores) if run_scores else 0
+        total_scores.append(average_score)
+    return sum(total_scores) / len(total_scores) if total_scores else 0
 
-if __name__ == '__main__':
+def main():
     print('Start---')
 
     number_of_agents = 3
@@ -1172,10 +1176,8 @@ if __name__ == '__main__':
 
     scores_single_agent = []
     scores_global_agent = []
-    
-    # Aggregation and training loop
+
     for run in range(5):
-        # Train each agent's DQN scheduler and collect scores
         local_scores = []
         for i, scheduler in enumerate(dqn_schedulers):
             print(f'Start training DQN scheduler {i}:')
@@ -1183,68 +1185,35 @@ if __name__ == '__main__':
             score = test_agent(environments[i], scheduler)
             local_scores.append(score)
             print(f'The score of DQN scheduler {i}:', score)
-        
-        # Update global model using combined agents
+
         global_dqn_scheduler = combine_agents(global_dqn_scheduler, dqn_schedulers, local_scores)
-        
-        # Distribute the updated global model to each agent
         dqn_schedulers = distribute_agents(global_dqn_scheduler, dqn_schedulers)
-        
-        # Test and collect scores for both single and global DQN schedulers
+
         score_single = test_agent(single_environment, single_dqn_scheduler)
         scores_single_agent.append(score_single)
-        
         score_global = test_agent(global_environment, global_dqn_scheduler)
         scores_global_agent.append(score_global)
-        
         print(f"Run {run}: Single DQN Score: {score_single}, Global DQN Score: {score_global}")
-    
-    # Save the scores to CSV files
+
     pd.DataFrame({
         'Single Agent': scores_single_agent,
         'Global Agent': scores_global_agent
     }).to_csv('agent_scores_comparison.csv', index=False)
 
-
-def main_training_loop():
-    environments, schedulers = initialize_environments_and_schedulers(num_agents)
-    global_scheduler = initialize_global_scheduler()
-    
-    for episode in range(total_episodes):
-        local_scores = []
-        
-        # Train each local scheduler and compute scores
-        for env, scheduler in zip(environments, schedulers):
-            train_scheduler(env, scheduler)
-            score = evaluate_scheduler(env, scheduler)
-            local_scores.append(score)
-        
-        # Federated averaging
-        global_scheduler = combine_agents(global_scheduler, schedulers, local_scores)
-        schedulers = distribute_agents(global_scheduler, schedulers)
-        
-        # Optionally evaluate global scheduler
-        global_score = evaluate_scheduler(global_environment, global_scheduler)
-        print(f'Episode {episode}: Global Score: {global_score}')
-
-        # Save scores and models
-        save_scores_and_models(schedulers, global_scheduler, episode)
-
-def plot_results(scores_single_agent, scores_global_agent):
-    plt.plot(scores_single_agent, label='Single Agent')
-    plt.plot(scores_global_agent, label='Global Agent')
+    plt.figure(figsize=(10, 5))
+    plt.plot(scores_single_agent, label='Single Agent', color='red')
+    plt.plot(scores_global_agent, label='Aggregated Agent', color='green')
+    plt.title('Performance Comparison')
     plt.xlabel('Episodes')
     plt.ylabel('Scores')
     plt.legend()
-    plt.savefig('comparison_plot.png')
+    plt.grid(True)
+    plt.savefig('performance_comparison.png')
     plt.show()
 
-def save_scores(scores_single_agent, scores_global_agent):
-    results = pd.DataFrame({
-        'Single Agent': scores_single_agent,
-        'Global Agent': scores_global_agent
-    })
-    results.to_csv('scores_comparison.csv', index=False)
+if __name__ == '__main__':
+    main()
+
 # End of __main__.py
 
 # Start of task.py
@@ -1291,43 +1260,3 @@ class Task:
 # Start of __init__.py
 
 # End of __init__.py
-
-# Start of activate_this.py
-"""
-Activate virtualenv for current interpreter:
-
-Use exec(open(this_file).read(), {'__file__': this_file}).
-
-This can be used when you must use an existing Python interpreter, not the virtualenv bin/python.
-"""  # noqa: D415
-from __future__ import annotations
-
-import os
-import site
-import sys
-
-try:
-    abs_file = os.path.abspath(__file__)
-except NameError as exc:
-    msg = "You must use exec(open(this_file).read(), {'__file__': this_file}))"
-    raise AssertionError(msg) from exc
-
-bin_dir = os.path.dirname(abs_file)
-base = bin_dir[: -len("Scripts") - 1]  # strip away the bin part from the __file__, plus the path separator
-
-# prepend bin to PATH (this file is inside the bin directory)
-os.environ["PATH"] = os.pathsep.join([bin_dir, *os.environ.get("PATH", "").split(os.pathsep)])
-os.environ["VIRTUAL_ENV"] = base  # virtual env is right above bin directory
-os.environ["VIRTUAL_ENV_PROMPT"] = "" or os.path.basename(base)  # noqa: SIM222
-
-# add the virtual environments libraries to the host python import mechanism
-prev_length = len(sys.path)
-for lib in "..\\Lib\\site-packages".split(os.pathsep):
-    path = os.path.realpath(os.path.join(bin_dir, lib))
-    site.addsitedir(path.decode("utf-8") if "" else path)
-sys.path[:] = sys.path[prev_length:] + sys.path[0:prev_length]
-
-sys.real_prefix = sys.prefix
-sys.prefix = base
-
-# End of activate_this.py
