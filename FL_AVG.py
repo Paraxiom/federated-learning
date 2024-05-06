@@ -3,12 +3,17 @@ from schedule import *
 # Adjusting combine_agents in FL_AVG.py to average based on scores or data volume
 def combine_agents(main_agent, agents, scores):
     total_score = sum(scores)
+    if total_score == 0:
+        print("Warning: Total score is zero. Agents will not be updated.")
+        return main_agent  # or handle this case differently based on your needs
+
     for i in range(len(agents)):
         for main_param, agent_param in zip(main_agent.dqn_train.model.trainable_variables, agents[i].dqn_train.model.trainable_variables):
             if i == 0:
                 main_param.assign(agent_param * (scores[i] / total_score))
             else:
-                main_param.assign(main_param + agent_param * (scores[i] / total_score))
+                main_param.assign_add(agent_param * (scores[i] / total_score))
+
     return main_agent
 
 

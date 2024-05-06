@@ -32,7 +32,44 @@ class Environment:
         """Calculate the number of possible actions."""
         # Each task can be placed on any node, plus one action for not scheduling
         return self.queue_size * len(self.nodes) + 1
-    
+    def step(self, action):
+        """Process an action and update the environment state.
+
+        Args:
+            action (int): The action index representing which task to schedule on which node,
+                        or a special action indicating 'no operation'.
+
+        Returns:
+            tuple: (reward, next_state, done) where 'reward' is the reward for taking the action,
+                'next_state' is the updated state representation of the environment, and
+                'done' is a boolean indicating if the environment has reached a termination state.
+        """
+        if action == self.queue_size * len(self.nodes):  # no operation
+            # No task is scheduled, possibly due to all tasks being handled or strategic waiting
+            pass
+        else:
+            node_index = action % len(self.nodes)
+            task_index = action // len(self.nodes)
+            if task_index < len(self.queue):
+                # Assign the task from the queue to the specified node
+                if self.nodes[node_index].schedule_task(self.queue.pop(task_index), self.timestep_counter):
+                    pass # Task scheduled successfully
+
+        # Move the next timestep after action processing
+        self.timestep()
+
+        # Calculate reward after the action
+        reward = self.reward()
+
+        # Check if the environment has reached a termination condition
+        done = self.terminated()
+
+        # Generate the next state of the environment
+        next_state = self.summary()
+
+        return (reward, next_state, done)
+
+
     def timestep(self):
         """Proceed to the next timestep."""
         self.timestep_counter += 1

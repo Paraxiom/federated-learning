@@ -5,13 +5,15 @@ from FL_AVG import combine_agents, distribute_agents
 import pandas as pd
 from plot import node_plot
 
-def test_agent(test_environment, dqn_scheduler, runs_test=3):
-    scores = []
+def test_agent(environment, scheduler, runs_test=3):
+    total_scores = []
     for i in range(runs_test):
-        actions, score = dqn_scheduler.schedule()
-        print(f'run_test number {i}', score)
-        scores.append(score)
-    return sum(scores) / len(scores)
+        actions, run_scores = scheduler.schedule()
+        # Calculate the average or total score for this run
+        average_score = sum(run_scores) / len(run_scores) if run_scores else 0
+        print(f'run_test number {i}', average_score)
+        total_scores.append(average_score)
+    return sum(total_scores) / len(total_scores) if total_scores else 0
 
 if __name__ == '__main__':
     print('Start---')

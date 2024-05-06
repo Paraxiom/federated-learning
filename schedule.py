@@ -383,10 +383,28 @@ class DeepRMScheduler(Scheduler):
 
         self.dqn_train = DQN(input_shape, output_shape, num_actions)
         self.dqn_target = DQN(input_shape, output_shape, num_actions)
-        
+        self.epsilon = 1.0  # Starting value for epsilon
         if train:
             trainer = DeepRMTrainer(environment)
             trainer.train()
+
+    def train(self):
+        for i in range(100):  # Example: 100 training iterations
+            observation = self.environment.summary()
+            action = self.dqn_train.get_action(observation)
+            reward, next_state, done = self.environment.step(action)  # Assuming these methods exist
+            self.dqn_train.add_experience({
+                's': observation,
+                'a': action,
+                'r': reward,
+                's2': next_state,
+                'done': done
+            })
+            self.dqn_train.train(self.dqn_target)  # Assuming a train method exists for experience replay
+
+            if done:
+                break
+
 
     def schedule(self):
         """Schedule with trained model."""

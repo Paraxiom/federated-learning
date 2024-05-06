@@ -10,6 +10,8 @@ from PIL import Image
 class Node:
     """Node."""
 
+
+    
     def __init__(self, resources, duration, label):
         self.resources = resources
         self.duration = duration
@@ -20,6 +22,39 @@ class Node:
         # state matrices, 0 stands for occupied slot, 255 stands for vacant slot
         self.state_matrices = [np.full((duration, resource), 255, dtype=np.uint8) for resource in resources]
         self._state_matrices_capacity = [[resource]*duration for resource in resources]
+
+
+    def can_schedule(self, task):
+        """
+        Determine if the task can be scheduled based on the node's current resource capacities.
+        Args:
+        task (Task): The task to be scheduled.
+        Returns:
+        bool: True if the task can be scheduled, False otherwise.
+        """
+        # Check if the resources required by the task are available for the required duration
+        if task.duration > len(self._state_matrices_capacity[0]):  # Corrected attribute name here
+            return False
+        
+        # Check resource availability for each required resource in the task
+        for resource_index, required_amount in enumerate(task.resources):
+            for time_slot in range(task.duration):
+                # Check if there is enough of each resource for each time slot
+                if self._state_matrices_capacity[resource_index][time_slot] < required_amount:  # Corrected attribute name here
+                    return False
+
+        return True
+
+
+    def schedule_task(self, task, current_time):
+        """Schedule a task on this node if there is enough capacity."""
+        if self.can_schedule(task):
+            # Assuming you pass the current time or timestep in which the task is scheduled
+            self.scheduled_tasks.append((task, current_time + task.duration))
+            return True
+        return False
+
+    
 
     def schedule(self, task):
         """Schedule task on node."""

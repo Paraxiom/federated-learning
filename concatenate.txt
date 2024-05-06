@@ -34,7 +34,43 @@ class Environment:
         """Calculate the number of possible actions."""
         # Each task can be placed on any node, plus one action for not scheduling
         return self.queue_size * len(self.nodes) + 1
-    
+    def step(self, action):
+        """Process an action and update the environment state.
+
+        Args:
+            action (int): The action index representing which task to schedule on which node,
+                        or a special action indicating 'no operation'.
+
+        Returns:
+            tuple: (reward, next_state, done) where 'reward' is the reward for taking the action,
+                'next_state' is the updated state representation of the environment, and
+                'done' is a boolean indicating if the environment has reached a termination state.
+        """
+        if action == self.queue_size * len(self.nodes):  # no operation
+            # No task is scheduled, possibly due to all tasks being handled or strategic waiting
+            pass
+        else:
+            node_index = action % len(self.nodes)
+            task_index = action // len(self.nodes)
+            if task_index < len(self.queue):
+                # Assign the task from the queue to the specified node
+                self.nodes[node_index].schedule_task(self.queue.pop(task_index))
+
+        # Move the next timestep after action processing
+        self.timestep()
+
+        # Calculate reward after the action
+        reward = self.reward()
+
+        # Check if the environment has reached a termination condition
+        done = self.terminated()
+
+        # Generate the next state of the environment
+        next_state = self.summary()
+
+        return (reward, next_state, done)
+
+
     def timestep(self):
         """Proceed to the next timestep."""
         self.timestep_counter += 1
@@ -320,6 +356,8 @@ from PIL import Image
 class Node:
     """Node."""
 
+
+    
     def __init__(self, resources, duration, label):
         self.resources = resources
         self.duration = duration
@@ -330,6 +368,40 @@ class Node:
         # state matrices, 0 stands for occupied slot, 255 stands for vacant slot
         self.state_matrices = [np.full((duration, resource), 255, dtype=np.uint8) for resource in resources]
         self._state_matrices_capacity = [[resource]*duration for resource in resources]
+
+
+    def can_schedule(self, task):
+        """
+        Determine if the task can be scheduled based on the node's current resource capacities.
+        Args:
+        task (Task): The task to be scheduled.
+        Returns:
+        bool: True if the task can be scheduled, False otherwise.
+        """
+        # Check if the resources required by the task are available for the required duration
+        if task.duration > len(self._state_matrices_capacity[0]):  # Corrected attribute name here
+            return False
+        
+        # Check resource availability for each required resource in the task
+        for resource_index, required_amount in enumerate(task.resources):
+            for time_slot in range(task.duration):
+                # Check if there is enough of each resource for each time slot
+                if self._state_matrices_capacity[resource_index][time_slot] < required_amount:  # Corrected attribute name here
+                    return False
+
+        return True
+
+
+    def schedule_task(self, task):
+        """Schedule a task on this node if there is enough capacity."""
+        # Implementation assumes that Node has a method or process to handle task scheduling
+        # You might need to check resources, capacity, etc. before scheduling
+        if self.can_schedule(task):
+            self.scheduled_tasks.append(task)
+            # Update any relevant node state or resources
+            return True
+        return False
+    
 
     def schedule(self, task):
         """Schedule task on node."""
@@ -745,107 +817,107 @@ class CNNModel(tf.keras.Model):
 
 
 
-    class DQN(object):
-        """DQN Implementation."""
-        def __init__(self, input_shape, output_shape, num_actions):
-            self.num_actions = num_actions
-            self.lr = 0.01
-            self.gamma = 0.99
-            self.batch_size = 64
-            self.epsilon = 1.0
-            self.epsilon_min = 0.01
-            self.epsilon_decay = 0.995
-            self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}
-            self.min_experiences = 100
-            self.max_experiences = 1000
-            self.optimizer = tf.optimizers.Adam(self.lr)
-            self.model = self._create_model(input_shape, output_shape)
-            self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}  # Initialize replay buffer
+class DQN(object):
+    """DQN Implementation."""
+    def __init__(self, input_shape, output_shape, num_actions):
+        self.num_actions = num_actions
+        self.lr = 0.01
+        self.gamma = 0.99
+        self.batch_size = 64
+        self.epsilon = 1.0
+        self.epsilon_min = 0.01
+        self.epsilon_decay = 0.995
+        self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}
+        self.min_experiences = 100
+        self.max_experiences = 1000
+        self.optimizer = tf.optimizers.Adam(self.lr)
+        self.model = self._create_model(input_shape, output_shape)
+        self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}  # Initialize replay buffer
 
-        def _create_model(self, input_shape, output_shape):
-            model = Sequential([
-                Input(shape=input_shape),
-                Conv2D(32, (3, 3), activation='relu'),
-                MaxPooling2D(),
-                Flatten(),
-                Dense(64, activation='relu'),
-                Dense(output_shape, activation='linear')
-            ])
-            model.compile(optimizer='adam', loss='mean_squared_error')
-            return model
-        
-        def get_action(self, states, epsilon=None):
-            if epsilon is None:
-                epsilon = self.epsilon
-            if np.random.rand() < epsilon:
-                return np.random.choice(self.num_actions)
-            else:
-                return np.argmax(self.predict(np.array([states]))[0])
+    def _create_model(self, input_shape, output_shape):
+        model = Sequential([
+            Input(shape=input_shape),
+            Conv2D(32, (3, 3), activation='relu'),
+            MaxPooling2D(),
+            Flatten(),
+            Dense(64, activation='relu'),
+            Dense(output_shape, activation='linear')
+        ])
+        model.compile(optimizer='adam', loss='mean_squared_error')
+        return model
+    
+    def get_action(self, states, epsilon=None):
+        if epsilon is None:
+            epsilon = self.epsilon
+        if np.random.rand() < epsilon:
+            return np.random.choice(self.num_actions)
+        else:
+            return np.argmax(self.predict(np.array([states]))[0])
 
-        def train(self, dqn_target):
-            if len(self.experience['s']) < self.min_experiences:
-                return
-            # Update epsilon after each batch training
-            self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
-        def predict(self, input_data):
-            """Predict Q value given state."""
-            return self.model(input_data.astype('float32').reshape(input_data.shape[0], input_data.shape[1], input_data.shape[2], 1))
+    def train(self, dqn_target):
+        if len(self.experience['s']) < self.min_experiences:
+            return
+        # Update epsilon after each batch training
+        self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
+    def predict(self, input_data):
+        """Predict Q value given state."""
+        return self.model(input_data.astype('float32').reshape(input_data.shape[0], input_data.shape[1], input_data.shape[2], 1))
 
-        @tf.function
-        def train(self, dqn_target):
-            """Train DQN."""
-            if len(self.experience['s']) < self.min_experiences:
-                return
+    @tf.function
+    def train(self, dqn_target):
+        """Train DQN."""
+        if len(self.experience['s']) < self.min_experiences:
+            return
 
-            # samples
-            ids = np.random.randint(low=0, high=len(self.experience['s']), size=self.batch_size)
-            states = np.asarray([self.experience['s'][i] for i in ids])
-            actions = np.asarray([self.experience['a'][i] for i in ids])
-            rewards = np.asarray([self.experience['r'][i] for i in ids])
-            states_next = np.asarray([self.experience['s2'][i] for i in ids])
-            dones = np.asarray([self.experience['done'][i] for i in ids])
+        # samples
+        ids = np.random.randint(low=0, high=len(self.experience['s']), size=self.batch_size)
+        states = np.asarray([self.experience['s'][i] for i in ids])
+        actions = np.asarray([self.experience['a'][i] for i in ids])
+        rewards = np.asarray([self.experience['r'][i] for i in ids])
+        states_next = np.asarray([self.experience['s2'][i] for i in ids])
+        dones = np.asarray([self.experience['done'][i] for i in ids])
 
-            # use target model to calculate actual values
-            values_next = np.max(dqn_target.predict(states_next), axis=1)
-            actual_values = np.where(dones, rewards, rewards+self.gamma*values_next)
+        # use target model to calculate actual values
+        values_next = np.max(dqn_target.predict(states_next), axis=1)
+        actual_values = np.where(dones, rewards, rewards+self.gamma*values_next)
 
-            # use train model to calculate predict values and loss
-            with tf.GradientTape() as tape:
-                predicted_values = tf.math.reduce_sum(self.predict(states) * tf.one_hot(actions, self.num_actions), axis=1)
-                loss = tf.math.reduce_sum(tf.square(actual_values - predicted_values))
+        # use train model to calculate predict values and loss
+        with tf.GradientTape() as tape:
+            predicted_values = tf.math.reduce_sum(self.predict(states) * tf.one_hot(actions, self.num_actions), axis=1)
+            loss = tf.math.reduce_sum(tf.square(actual_values - predicted_values))
 
-            # apply gradient descent to update train model
-            variables = self.model.trainable_variables
-            gradients = tape.gradient(loss, variables)
-            self.optimizer.apply_gradients(zip(gradients, variables))
+        # apply gradient descent to update train model
+        variables = self.model.trainable_variables
+        gradients = tape.gradient(loss, variables)
+        self.optimizer.apply_gradients(zip(gradients, variables))
 
-        
+    
 
-        def add_experience(self, exp):
-            """Add experience to the replay buffer."""
-            if len(self.experience['s']) >= self.max_experiences:
-                for key in self.experience.keys():
-                    self.experience[key].pop(0)
-            for key, value in exp.items():
-                self.experience[key].append(value)
+    def add_experience(self, exp):
+        """Add experience to the replay buffer."""
+        if len(self.experience['s']) >= self.max_experiences:
+            for key in self.experience.keys():
+                self.experience[key].pop(0)
+        for key, value in exp.items():
+            self.experience[key].append(value)
 
-        def copy_weights(self, dqn_src):
-            """Copy weights between models."""
-            variables1 = self.model.trainable_variables
-            variables2 = dqn_src.model.trainable_variables
-            for v1, v2 in zip(variables1, variables2):
-                v1.assign(v2.numpy())
+    def copy_weights(self, dqn_src):
+        """Copy weights between models."""
+        variables1 = self.model.trainable_variables
+        variables2 = dqn_src.model.trainable_variables
+        for v1, v2 in zip(variables1, variables2):
+            v1.assign(v2.numpy())
 
-        def save_weights(self):
-            """Save model weights."""
-            # Ensure the directory exists
-            model_dir = '__cache__/model'
-            if not os.path.exists(model_dir):
-                os.makedirs(model_dir)
-            # Define the filepath for the Keras model
-            filepath = os.path.join(model_dir, 'dqn_model.keras')
-            # Save the model without specifying the format
-            self.model.save(filepath)
+    def save_weights(self):
+        """Save model weights."""
+        # Ensure the directory exists
+        model_dir = '__cache__/model'
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        # Define the filepath for the Keras model
+        filepath = os.path.join(model_dir, 'dqn_model.keras')
+        # Save the model without specifying the format
+        self.model.save(filepath)
 
 
 
@@ -1009,6 +1081,24 @@ class DeepRMScheduler(Scheduler):
         if train:
             trainer = DeepRMTrainer(environment)
             trainer.train()
+
+    def train(self):
+        for i in range(100):  # Example: 100 training iterations
+            observation = self.environment.summary()
+            action = self.dqn_train.get_action(observation)
+            reward, next_state, done = self.environment.step(action)  # Assuming these methods exist
+            self.dqn_train.add_experience({
+                's': observation,
+                'a': action,
+                'r': reward,
+                's2': next_state,
+                'done': done
+            })
+            self.dqn_train.train(self.dqn_target)  # Assuming a train method exists for experience replay
+
+            if done:
+                break
+
 
     def schedule(self):
         """Schedule with trained model."""
