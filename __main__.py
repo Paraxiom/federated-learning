@@ -13,10 +13,10 @@ def test_agent(environment, scheduler, runs_test=3):
     return sum(total_scores) / len(total_scores) if total_scores else 0
 
 def main():
-    print('Start---')
+    print('Starting Simulation...')
 
     number_of_agents = 3
-    environments, _ = zip(*[env.load() for _ in range(number_of_agents)])
+    environments, schedulers = zip(*[env.load() for _ in range(number_of_agents)])
     dqn_schedulers = [SchedulerTrain(environment) for environment in environments]
 
     global_environment, global_dqn_scheduler = env.load()
@@ -32,22 +32,30 @@ def main():
             score = test_agent(environments[i], scheduler)
             local_scores.append(score)
 
+        # Combining and distributing agent weights
         global_dqn_scheduler = combine_agents(global_dqn_scheduler, dqn_schedulers, local_scores)
         dqn_schedulers = distribute_agents(global_dqn_scheduler, dqn_schedulers)
 
+        # Testing both single and global agents
         score_single = test_agent(single_environment, single_dqn_scheduler)
         scores_single_agent.append(score_single)
         score_global = test_agent(global_environment, global_dqn_scheduler)
         scores_global_agent.append(score_global)
 
-    pd.DataFrame({
+        # Optionally, print scheduling info
+        print(f"Run {run + 1}: Single Agent Score = {score_single}, Global Agent Score = {score_global}")
+
+    # Save scores to CSV
+    score_data = {
         'Single Agent': scores_single_agent,
         'Global Agent': scores_global_agent
-    }).to_csv('agent_scores_comparison.csv', index=False)
+    }
+    pd.DataFrame(score_data).to_csv('agent_scores_comparison.csv', index=False)
 
+    # Plotting the scores for visual comparison
     plt.figure(figsize=(10, 5))
     plt.plot(scores_single_agent, label='Single Agent', color='red')
-    plt.plot(scores_global_agent, label='Aggregated Agent', color='green')
+    plt.plot(scores_global_agent, label='Global Agent', color='green')
     plt.title('Performance Comparison')
     plt.xlabel('Episodes')
     plt.ylabel('Scores')

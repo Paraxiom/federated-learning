@@ -8,7 +8,7 @@ import random
 
 import numpy as np
 from PIL import Image
-
+from schedule import CompactScheduler
 from node import Node
 from task import Task
 from schedule import CompactScheduler
@@ -28,7 +28,9 @@ class Environment:
         self.timestep_counter = 0
         self._task_generator = task_generator
         self._task_generator_end = False
-
+    def load_scheduler():
+        from schedule import CompactScheduler
+        return CompactScheduler()
     
     def get_number_of_actions(self):
         """Calculate the number of possible actions."""
@@ -268,15 +270,17 @@ def combine_agents(main_agent, agents, scores):
     total_score = sum(scores)
     if total_score == 0:
         print("Warning: Total score is zero. Agents will not be updated.")
-        return main_agent  # or handle this case differently based on your needs
+        return main_agent
 
-    for i in range(len(agents)):
-        for main_param, agent_param in zip(main_agent.dqn_train.model.trainable_variables, agents[i].dqn_train.model.trainable_variables):
-            if i == 0:
-                main_param.assign(agent_param * (scores[i] / total_score))
-            else:
-                main_param.assign_add(agent_param * (scores[i] / total_score))
-
+    for i, agent in enumerate(agents):
+        agent_weights = agent.model_train.get_weights()
+        if i == 0:
+            combined_weights = [weight * (scores[i] / total_score) for weight in agent_weights]
+        else:
+            for j in range(len(combined_weights)):
+                combined_weights[j] += agent_weights[j] * (scores[i] / total_score)
+    
+    main_agent.model_train.set_weights(combined_weights)
     return main_agent
 
 
@@ -299,13 +303,10 @@ def combine_agents_reward_based(main_agent, agents, scores):
     return main_agent
 
 def distribute_agents(main_agent, agents):
-    for i in range(len(agents)):
-        for main_agent_param, agent_param in zip(main_agent.dqn_target.model.trainable_variables,  agents[i].dqn_target.model.trainable_variables):
-            agent_param.assign(main_agent_param)
-        for main_agent_param, agent_param in zip(main_agent.dqn_train.model.trainable_variables, agents[i].dqn_train.model.trainable_variables):
-            agent_param.assign(main_agent_param)
+    main_weights = main_agent.model_train.get_weights()  # Assuming model_train is correct
+    for agent in agents:
+        agent.model_train.set_weights(main_weights)
     return agents
-
 
 # End of FL_AVG.py
 
@@ -696,13 +697,41 @@ print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 # End of test_gpu.py
 
+# Start of test2.py
+from FL_AVG import combine_agents, distribute_agents
+from schedule import DQN
+
+from schedule import DQN
+import unittest
+class TestFederatedLearning(unittest.TestCase):
+    def setUp(self):
+        self.model_input_shape = (2, 2, 1)  # Example shape
+        self.output_shape = 10  # Example output size
+        self.num_actions = 2
+        self.dqn1 = DQN(self.model_input_shape, self.output_shape, self.num_actions)
+        self.dqn2 = DQN(self.model_input_shape, self.output_shape, self.num_actions)
+    def test_combine_agents(self):
+        """ Test if combining agents properly averages their parameters. """
+        combined_dqn = combine_agents(self.dqn1, [self.dqn1, self.dqn2], [0.5, 0.5])
+        # You would add assertions here to check if the parameters are indeed averaged
+
+    def test_distribute_agents(self):
+        """ Test if distributing weights updates all agents equally. """
+        distribute_agents(self.dqn1, [self.dqn1, self.dqn2])
+        # Assertions to check if dqn1 and dqn2 now share the same weights
+
+if __name__ == '__main__':
+    unittest.main()
+
+# End of test2.py
+
 # Start of schedule.py
 """Schedulers."""
 
 import datetime
 import os
 from abc import ABC, abstractmethod
-
+import env
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
@@ -838,10 +867,14 @@ class DQN(object):
         self.optimizer = tf.optimizers.Adam(self.lr)
         self.model = self._create_model(input_shape, output_shape)
         self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}  # Initialize replay buffer
-
+        reshaped_input_shape = (2, 2, 1)  # Reshape (4,) to (2, 2, 1)
+        self.model = self._create_model(reshaped_input_shape, output_shape)
+        self.model_train = self._create_model(input_shape, output_shape)
+        self.model_target = self._create_model(input_shape, output_shape)
+    
     def _create_model(self, input_shape, output_shape):
         model = Sequential([
-            Input(shape=input_shape),
+            Input(shape=input_shape),  # Correct input shape e.g., (28, 28, 1) for MNIST data
             Conv2D(32, (3, 3), activation='relu'),
             MaxPooling2D(),
             Flatten(),
@@ -850,6 +883,7 @@ class DQN(object):
         ])
         model.compile(optimizer='adam', loss='mean_squared_error')
         return model
+
     
     def get_action(self, states, epsilon=None):
         if epsilon is None:
@@ -1149,6 +1183,76 @@ class DeepRMScheduler(Scheduler):
 
 # End of schedule.py
 
+# Start of test1.py
+import unittest
+from env import Environment, load
+from node import Node
+from task import Task
+from schedule import DQN
+from FL_AVG import combine_agents, distribute_agents
+
+class TestEnvironment(unittest.TestCase):
+    def setUp(self):
+        # Define nodes and initialize Environment
+        nodes = [Node([2, 2], 10, "Node1"), Node([2, 2], 10, "Node2")]
+        tasks = [Task([1, 1], 2, "Task1"), Task([1, 1], 3, "Task2")]
+        self.environment = Environment(nodes, 10, 20, task_generator=iter(tasks))
+
+        # Define model shapes and actions for DQN
+        self.model_input_shape = (2, 2, 1)  # Correct shape for Conv2D input
+        self.output_shape = 10  # Number of outputs
+        self.num_actions = 2  # Number of actions
+
+        # Initialize two DQN models for testing
+        self.dqn1 = DQN(self.model_input_shape, self.output_shape, self.num_actions)
+        self.dqn2 = DQN(self.model_input_shape, self.output_shape, self.num_actions)
+
+    def test_initialization(self):
+        """Check initial setup of the environment."""
+        self.assertEqual(len(self.environment.nodes), 2)
+        self.assertEqual(self.environment.queue_size, 10)
+        self.assertEqual(self.environment.backlog_size, 20)
+
+    def test_step_function_no_action(self):
+        """Verify that no action results in expected state changes."""
+        initial_reward, initial_state, initial_done = self.environment.step(self.environment.get_number_of_actions() - 1)
+        self.assertTrue(initial_reward <= 0, "Reward should be zero or negative for no action")
+        self.assertFalse(initial_done, "Environment should not terminate on no action")
+        self.assertIsNotNone(initial_state, "Next state should still be provided")
+
+    def test_task_scheduling(self):
+        """Ensure task scheduling updates queue and node state."""
+        initial_task_count = len(self.environment.queue)
+        self.environment.queue.append(Task([1, 1], 2, "Task1"))
+        self.environment.step(0)  # Assuming 0 is a valid action index for placing Task1 on Node1
+        self.assertEqual(len(self.environment.queue), initial_task_count - 1, "Queue should decrease by 1")
+
+class TestFederatedLearning(unittest.TestCase):
+    def setUp(self):
+        # Define model input shape, output shape, and actions
+        self.model_input_shape = (4, 4, 1)  # Adjusted shape to match Conv2D requirements
+        self.output_shape = 2  # Adjusted based on actual network configuration
+        self.num_actions = 2
+
+        # Initialize two DQN models for federated learning tests
+        self.dqn1 = DQN(self.model_input_shape, self.output_shape, self.num_actions)
+        self.dqn2 = DQN(self.model_input_shape, self.output_shape, self.num_actions)
+
+    def test_combine_agents(self):
+        """Test if combining agents properly averages their parameters."""
+        combined_dqn = combine_agents(self.dqn1, [self.dqn1, self.dqn2], [0.5, 0.5])
+        # Assertions to verify that parameters have been averaged should be implemented here
+
+    def test_distribute_agents(self):
+        """Ensure that distributing weights updates all agents equally."""
+        distribute_agents(self.dqn1, [self.dqn1, self.dqn2])
+        # Assertions to verify that weights are equally distributed should be implemented here
+
+if __name__ == '__main__':
+    unittest.main()
+
+# End of test1.py
+
 # Start of __main__.py
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -1165,10 +1269,10 @@ def test_agent(environment, scheduler, runs_test=3):
     return sum(total_scores) / len(total_scores) if total_scores else 0
 
 def main():
-    print('Start---')
+    print('Starting Simulation...')
 
     number_of_agents = 3
-    environments, _ = zip(*[env.load() for _ in range(number_of_agents)])
+    environments, schedulers = zip(*[env.load() for _ in range(number_of_agents)])
     dqn_schedulers = [SchedulerTrain(environment) for environment in environments]
 
     global_environment, global_dqn_scheduler = env.load()
@@ -1180,29 +1284,34 @@ def main():
     for run in range(5):
         local_scores = []
         for i, scheduler in enumerate(dqn_schedulers):
-            print(f'Start training DQN scheduler {i}:')
             scheduler.train()
             score = test_agent(environments[i], scheduler)
             local_scores.append(score)
-            print(f'The score of DQN scheduler {i}:', score)
 
+        # Combining and distributing agent weights
         global_dqn_scheduler = combine_agents(global_dqn_scheduler, dqn_schedulers, local_scores)
         dqn_schedulers = distribute_agents(global_dqn_scheduler, dqn_schedulers)
 
+        # Testing both single and global agents
         score_single = test_agent(single_environment, single_dqn_scheduler)
         scores_single_agent.append(score_single)
         score_global = test_agent(global_environment, global_dqn_scheduler)
         scores_global_agent.append(score_global)
-        print(f"Run {run}: Single DQN Score: {score_single}, Global DQN Score: {score_global}")
 
-    pd.DataFrame({
+        # Optionally, print scheduling info
+        print(f"Run {run + 1}: Single Agent Score = {score_single}, Global Agent Score = {score_global}")
+
+    # Save scores to CSV
+    score_data = {
         'Single Agent': scores_single_agent,
         'Global Agent': scores_global_agent
-    }).to_csv('agent_scores_comparison.csv', index=False)
+    }
+    pd.DataFrame(score_data).to_csv('agent_scores_comparison.csv', index=False)
 
+    # Plotting the scores for visual comparison
     plt.figure(figsize=(10, 5))
     plt.plot(scores_single_agent, label='Single Agent', color='red')
-    plt.plot(scores_global_agent, label='Aggregated Agent', color='green')
+    plt.plot(scores_global_agent, label='Global Agent', color='green')
     plt.title('Performance Comparison')
     plt.xlabel('Episodes')
     plt.ylabel('Scores')

@@ -6,7 +6,7 @@ import random
 
 import numpy as np
 from PIL import Image
-
+from schedule import CompactScheduler
 from node import Node
 from task import Task
 from schedule import CompactScheduler
@@ -26,7 +26,9 @@ class Environment:
         self.timestep_counter = 0
         self._task_generator = task_generator
         self._task_generator_end = False
-
+    def load_scheduler():
+        from schedule import CompactScheduler
+        return CompactScheduler()
     
     def get_number_of_actions(self):
         """Calculate the number of possible actions."""

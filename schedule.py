@@ -3,7 +3,7 @@
 import datetime
 import os
 from abc import ABC, abstractmethod
-
+import env
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
@@ -139,10 +139,14 @@ class DQN(object):
         self.optimizer = tf.optimizers.Adam(self.lr)
         self.model = self._create_model(input_shape, output_shape)
         self.experience = {'s': [], 'a': [], 'r': [], 's2': [], 'done': []}  # Initialize replay buffer
-
+        reshaped_input_shape = (2, 2, 1)  # Reshape (4,) to (2, 2, 1)
+        self.model = self._create_model(reshaped_input_shape, output_shape)
+        self.model_train = self._create_model(input_shape, output_shape)
+        self.model_target = self._create_model(input_shape, output_shape)
+    
     def _create_model(self, input_shape, output_shape):
         model = Sequential([
-            Input(shape=input_shape),
+            Input(shape=input_shape),  # Correct input shape e.g., (28, 28, 1) for MNIST data
             Conv2D(32, (3, 3), activation='relu'),
             MaxPooling2D(),
             Flatten(),
@@ -151,6 +155,7 @@ class DQN(object):
         ])
         model.compile(optimizer='adam', loss='mean_squared_error')
         return model
+
     
     def get_action(self, states, epsilon=None):
         if epsilon is None:
