@@ -143,13 +143,14 @@ class DQN(object):
         self.model = self._create_model(reshaped_input_shape, output_shape)
         self.model_train = self._create_model(input_shape, output_shape)
         self.model_target = self._create_model(input_shape, output_shape)
-    
+        self.expected_input_shape = (2, 2, 1)
     def _create_model(self, input_shape, output_shape):
         model = Sequential([
-            Input(shape=input_shape),  # Correct input shape e.g., (28, 28, 1) for MNIST data
+            Input(shape=input_shape),
             Conv2D(32, (3, 3), activation='relu'),
             MaxPooling2D(),
             Flatten(),
+            # Make sure the Dense layer's input size aligns with Flatten output
             Dense(64, activation='relu'),
             Dense(output_shape, activation='linear')
         ])
@@ -171,8 +172,16 @@ class DQN(object):
         # Update epsilon after each batch training
         self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
     def predict(self, input_data):
-        """Predict Q value given state."""
-        return self.model(input_data.astype('float32').reshape(input_data.shape[0], input_data.shape[1], input_data.shape[2], 1))
+        # Assuming input_data originally has a shape expected by the model
+        # Print the shape to debug
+        print("Original shape:", input_data.shape)
+        
+        # Reshape logic (ensure this matches the expected input shape of your model)
+        reshaped_input = input_data.astype('float32').reshape(-1, *self.expected_input_shape)
+        print("Reshaped input:", reshaped_input.shape)
+        
+        # Call model
+        return self.model(reshaped_input)
 
     @tf.function
     def train(self, dqn_target):
@@ -382,17 +391,22 @@ class DeepRMScheduler(Scheduler):
         self.environment = environment
         input_shape = (environment.summary().shape[0], environment.summary().shape[1], 1)
         output_shape = environment.queue_size * len(environment.nodes) + 1
-        
         # Example calculation for num_actions
         num_actions = environment.queue_size * len(environment.nodes) + 1  # Adjust logic as needed
-
+        # Initialize DQN models before using them
         self.dqn_train = DQN(input_shape, output_shape, num_actions)
         self.dqn_target = DQN(input_shape, output_shape, num_actions)
+
+        # Now you can safely access the model attribute
+        self.model_train = self.dqn_train.model
+
+        
         self.epsilon = 1.0  # Starting value for epsilon
+        
         if train:
             trainer = DeepRMTrainer(environment)
             trainer.train()
-
+   
     def train(self):
         for i in range(100):  # Example: 100 training iterations
             observation = self.environment.summary()
