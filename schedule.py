@@ -246,7 +246,7 @@ class DeepRMTrainer(object):
     """DeepRM Trainer."""
 
     def __init__(self, environment):
-        self.episodes = 100
+        self.episodes = 5
         self.copy_steps = 32
         self.save_steps = 32
         self.epsilon = 0.99
